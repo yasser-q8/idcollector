@@ -7,109 +7,107 @@
     
     <script src="coi-serviceworker.js"></script>
     
-    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal/dist/bundle.js"></script>
 
     <style>
-        :root { --primary: #007bff; --success: #28a745; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f4f7f6; display: flex; justify-content: center; padding: 20px; }
-        .main-card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 8px 30px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-        .upload-box { border: 2px dashed #ddd; padding: 20px; margin: 15px 0; border-radius: 10px; position: relative; }
-        input[type="file"] { width: 100%; cursor: pointer; }
-        button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; margin-top: 10px; }
-        #go { background: var(--success); color: white; }
-        #go:disabled { background: #ccc; }
-        #status { margin: 15px 0; font-size: 14px; color: #555; line-height: 1.6; }
-        canvas { display: none; width: 100%; margin-top: 20px; border-radius: 8px; border: 1px solid #eee; }
-        .hidden { display: none; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; text-align: center; }
+        .main-card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
+        .upload-area { border: 2px dashed #4a90e2; padding: 20px; margin: 15px 0; border-radius: 15px; background: #f8fbff; }
+        input[type="file"] { width: 100%; margin-top: 10px; }
+        button { width: 100%; padding: 15px; border: none; border-radius: 12px; font-size: 18px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        #go { background: #00d1b2; color: white; margin-top: 10px; }
+        #go:disabled { background: #ddd; cursor: not-allowed; }
+        #status { margin: 20px 0; padding: 10px; border-radius: 8px; font-size: 14px; background: #fff3cd; color: #856404; }
+        canvas { display: none; width: 100%; border-radius: 10px; margin-top: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+        .success-btn { background: #4a90e2 !important; color: white; text-decoration: none; margin-top: 15px; display: block; }
     </style>
 </head>
 <body>
 
 <div class="main-card">
-    <h2>دمج بطاقات الهوية</h2>
-    <p style="font-size: 13px; color: #666;">سيتم حذف الخلفية ودمج الوجه والظهر في ملف PNG واحد</p>
-
-    <div class="upload-box">
-        <label>صورة الوجه (Front):</label>
-        <input type="file" id="frontImg" accept="image/*">
+    <h2 style="color: #2d3436;">معالج البطاقات 🚀</h2>
+    
+    <div class="upload-area">
+        <label>📸 صورة الوجه</label>
+        <input type="file" id="fInput" accept="image/*">
     </div>
 
-    <div class="upload-box">
-        <label>صورة الظهر (Back):</label>
-        <input type="file" id="backImg" accept="image/*">
+    <div class="upload-area">
+        <label>📸 صورة الظهر</label>
+        <input type="file" id="bInput" accept="image/*">
     </div>
 
-    <button id="go">بدء المعالجة الذكية</button>
-    <div id="status">جاهز للاستخدام.</div>
+    <button id="go">بدء المعالجة</button>
     
-    <canvas id="resultCanvas"></canvas>
+    <div id="status">جاري فحص المحرك...</div>
     
-    <a id="downloadLink" class="hidden">
-        <button style="background: var(--primary); color: white;">تحميل النتيجة النهائية</button>
+    <canvas id="resCanvas"></canvas>
+    
+    <a id="dlLink" style="display:none" class="success-btn">
+        <button class="success-btn">حفظ الصورة النهائية</button>
     </a>
 </div>
 
 <script>
-    const btn = document.getElementById('go');
     const status = document.getElementById('status');
+    const btn = document.getElementById('go');
+
+    // وظيفة للتأكد من أن المكتبة جاهزة
+    function checkLibrary() {
+        if (typeof imgly !== 'undefined') {
+            status.innerText = "المحرك جاهز للاستخدام ✅";
+            status.style.background = "#d4edda";
+            status.style.color = "#155724";
+            return true;
+        }
+        return false;
+    }
+
+    // محاولة الفحص كل ثانية حتى تحميل المكتبة
+    let checkInterval = setInterval(() => {
+        if(checkLibrary()) clearInterval(checkInterval);
+    }, 1000);
 
     btn.onclick = async () => {
-        const file1 = document.getElementById('frontImg').files[0];
-        const file2 = document.getElementById('backImg').files[0];
+        const f = document.getElementById('fInput').files[0];
+        const b = document.getElementById('bInput').files[0];
 
-        if (!file1 || !file2) {
-            alert("من فضلك اختر الصورتين أولاً");
-            return;
-        }
-
-        // التأكد من تحميل المكتبة
-        if (typeof imgly === 'undefined') {
-            status.innerHTML = "<span style='color:red'>فشل تحميل محرك الذكاء الاصطناعي. تأكد من اتصال الإنترنت أو حاول استخدام متصفح Chrome.</span>";
-            return;
-        }
+        if (!f || !b) return alert("يرجى اختيار الصورتين أولاً");
+        if (typeof imgly === 'undefined') return alert("المكتبة لم تكتمل بعد، انتظر ثوانٍ");
 
         btn.disabled = true;
-        status.innerText = "جاري تحضير المحرك (قد يستغرق 30 ثانية في المرة الأولى)...";
+        status.innerText = "⏳ جاري حذف الخلفية (المرحلة 1 من 2)...";
 
         try {
-            const config = {
-                model: 'small', // نسخة خفيفة
-                output: { type: 'foreground', format: 'image/png' }
-            };
+            const config = { model: 'small' };
 
-            status.innerText = "جاري معالجة صورة الوجه وحذف الخلفية...";
-            const blob1 = await imgly.backgroundRemoval(file1, config);
+            const blob1 = await imgly.backgroundRemoval(f, config);
             const img1 = await createImageBitmap(blob1);
-
-            status.innerText = "جاري معالجة صورة الظهر وحذف الخلفية...";
-            const blob2 = await imgly.backgroundRemoval(file2, config);
+            
+            status.innerText = "⏳ جاري حذف الخلفية (المرحلة 2 من 2)...";
+            const blob2 = await imgly.backgroundRemoval(b, config);
             const img2 = await createImageBitmap(blob2);
 
-            status.innerText = "جاري دمج الصور في ملف واحد...";
-            const canvas = document.getElementById('resultCanvas');
+            status.innerText = "🎨 جاري دمج الصور...";
+            const canvas = document.getElementById('resCanvas');
             const ctx = canvas.getContext('2d');
 
             canvas.width = Math.max(img1.width, img2.width);
-            canvas.height = img1.height + img2.height + 60; 
+            canvas.height = img1.height + img2.height + 50;
             canvas.style.display = "block";
 
-            // رسم خلفية شفافة (اختياري)
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // رسم الوجه
             ctx.drawImage(img1, (canvas.width - img1.width) / 2, 0);
-            // رسم الظهر
-            ctx.drawImage(img2, (canvas.width - img2.width) / 2, img1.height + 60);
+            ctx.drawImage(img2, (canvas.width - img2.width) / 2, img1.height + 50);
 
-            const downloadLink = document.getElementById('downloadLink');
-            downloadLink.href = canvas.toDataURL("image/png");
-            downloadLink.download = "Merged_ID.png";
-            downloadLink.classList.remove('hidden');
+            document.getElementById('dlLink').href = canvas.toDataURL("image/png");
+            document.getElementById('dlLink').download = "Merged_ID.png";
+            document.getElementById('dlLink').style.display = "block";
+            status.innerText = "تمت المهمة بنجاح! 🎉";
 
-            status.innerText = "تمت العملية بنجاح! يمكنك التحميل الآن.";
-        } catch (err) {
-            console.error(err);
-            status.innerHTML = `<span style='color:red'>حدث خطأ: ${err.message}. تأكد من تشغيل البرنامج من خلال رابط (GitHub Pages).</span>`;
+        } catch (e) {
+            console.error(e);
+            status.innerText = "❌ حدث خطأ: " + e.message;
         } finally {
             btn.disabled = false;
         }
