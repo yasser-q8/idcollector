@@ -3,125 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>معالج بطاقات الهوية الذكي</title>
+    <title>معالج البطاقات الذكي</title>
+    <script src="https://unpkg.com/coi-serviceworker"></script>
     <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@latest/dist/bundle.js"></script>
     <style>
-        :root { --primary: #4a90e2; --secondary: #28a745; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #333; }
-        .card-container { max-width: 700px; margin: auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-        h2 { color: var(--primary); margin-bottom: 20px; }
-        .input-group { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px dashed #ccc; }
-        input[type="file"] { margin-top: 10px; width: 100%; }
-        button { background: var(--secondary); color: white; border: none; padding: 12px 25px; cursor: pointer; border-radius: 8px; font-size: 18px; font-weight: bold; width: 100%; transition: 0.3s; }
-        button:hover { background: #218838; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        #status { margin: 20px 0; font-weight: bold; color: var(--primary); min-height: 24px; }
-        #canvas { display: none; margin: 20px auto; border: 2px solid #ddd; border-radius: 10px; max-width: 100%; height: auto; background: #fff; }
-        .footer-note { font-size: 12px; color: #777; margin-top: 20px; }
+        body { font-family: sans-serif; background: #f0f2f5; text-align: center; padding: 20px; }
+        .card { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        input { margin: 15px 0; display: block; width: 100%; }
+        button { background: #28a745; color: white; border: none; padding: 12px; cursor: pointer; border-radius: 8px; width: 100%; font-size: 16px; }
+        #status { margin: 15px 0; color: #007bff; font-weight: bold; }
+        canvas { display: none; width: 100%; margin-top: 20px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
-
-<div class="card-container">
-    <h2>دمج ومعالجة بطاقة الهوية</h2>
-    <p>قم برفع صورة الوجه والظهر لإزالة الخلفية ودمجهما تلقائياً.</p>
-    
-    <div class="input-group">
-        <strong>1. صورة وجه البطاقة:</strong><br>
-        <input type="file" id="frontInput" accept="image/*">
-    </div>
-    
-    <div class="input-group">
-        <strong>2. صورة ظهر البطاقة:</strong><br>
-        <input type="file" id="backInput" accept="image/*">
+    <div class="card">
+        <h2>معالج البطاقات</h2>
+        <input type="file" id="front" accept="image/*">
+        <input type="file" id="back" accept="image/*">
+        <button id="go">بدء المعالجة</button>
+        <div id="status">جاهز</div>
+        <canvas id="out"></canvas>
+        <br>
+        <a id="dl" style="display:none"><button style="background:#007bff">تحميل النتيجة</button></a>
     </div>
 
-    <button id="processBtn">ابدأ المعالجة الآن</button>
-    
-    <div id="status">جاهز للاستخدام</div>
-    
-    <canvas id="canvas"></canvas>
-    
-    <br>
-    <a id="downloadBtn" style="display:none;"><button style="background: var(--primary);">تحميل الصورة النهائية PNG</button></a>
+    <script>
+        const btn = document.getElementById('go');
+        btn.onclick = async () => {
+            const f = document.getElementById('front').files[0];
+            const b = document.getElementById('back').files[0];
+            if(!f || !b) return alert("اختر الصورتين");
 
-    <div class="footer-note">
-        * ملاحظة: في المرة الأولى سيتم تحميل ملفات المعالجة (مرة واحدة فقط).<br>
-        * تأكد من تشغيل الكود عبر سيرفر محلي أو استضافة ويب.
-    </div>
-</div>
+            btn.disabled = true;
+            document.getElementById('status').innerText = "جاري المعالجة... انتظر قليلاً";
 
-<script>
-    const frontInput = document.getElementById('frontInput');
-    const backInput = document.getElementById('backInput');
-    const btn = document.getElementById('processBtn');
-    const status = document.getElementById('status');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const downloadBtn = document.getElementById('downloadBtn');
+            try {
+                const config = { model: 'small' };
+                const img1 = await createImageBitmap(await imglyRemoveBackground(f, config));
+                const img2 = await createImageBitmap(await imglyRemoveBackground(b, config));
 
-    btn.addEventListener('click', async () => {
-        if (!frontInput.files[0] || !backInput.files[0]) {
-            alert("من فضلك اختر الصورتين أولاً.");
-            return;
-        }
+                const canvas = document.getElementById('out');
+                const ctx = canvas.getContext('2d');
+                canvas.width = Math.max(img1.width, img2.width);
+                canvas.height = img1.height + img2.height + 40;
+                canvas.style.display = "block";
 
-        btn.disabled = true;
-        downloadBtn.style.display = "none";
-        status.innerText = "جاري تهيئة المحرك...";
+                ctx.drawImage(img1, (canvas.width-img1.width)/2, 0);
+                ctx.drawImage(img2, (canvas.width-img2.width)/2, img1.height + 40);
 
-        const config = {
-            model: 'small', // استخدام نسخة خفيفة وسريعة
-            progress: (step, current, total) => {
-                const percent = Math.round(current / total * 100);
-                status.innerText = `جاري العمل: ${step} (${percent}%)`;
+                document.getElementById('dl').href = canvas.toDataURL();
+                document.getElementById('dl').download = "card.png";
+                document.getElementById('dl').style.display = "block";
+                document.getElementById('status').innerText = "تمت العملية!";
+            } catch (e) {
+                console.error(e);
+                document.getElementById('status').innerText = "حدث خطأ: " + e.message;
+            } finally {
+                btn.disabled = false;
             }
         };
-
-        try {
-            // معالجة صورة الوجه
-            status.innerText = "جاري معالجة صورة الوجه...";
-            const frontBlob = await imglyRemoveBackground(frontInput.files[0], config);
-            const frontImg = await createImageBitmap(frontBlob);
-
-            // معالجة صورة الظهر
-            status.innerText = "جاري معالجة صورة الظهر...";
-            const backBlob = await imglyRemoveBackground(backInput.files[0], config);
-            const backImg = await createImageBitmap(backBlob);
-
-            // حساب الأبعاد للدمج الرأسي
-            const maxWidth = Math.max(frontImg.width, backImg.width);
-            const totalHeight = frontImg.height + backImg.height + 40; // 40 بكسل مسافة
-
-            canvas.width = maxWidth;
-            canvas.height = totalHeight;
-            canvas.style.display = "block";
-
-            // الرسم على الكانفاس
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // رسم الوجه في المنتصف
-            const frontX = (maxWidth - frontImg.width) / 2;
-            ctx.drawImage(frontImg, frontX, 0);
-            
-            // رسم الظهر في المنتصف تحت الوجه
-            const backX = (maxWidth - backImg.width) / 2;
-            ctx.drawImage(backImg, backX, frontImg.height + 40);
-
-            // تجهيز رابط التحميل
-            downloadBtn.href = canvas.toDataURL("image/png");
-            downloadBtn.download = "ID_Card_Combined.png";
-            downloadBtn.style.display = "inline-block";
-
-            status.innerText = "تمت المعالجة بنجاح!";
-        } catch (error) {
-            console.error(error);
-            status.innerText = "حدث خطأ. تأكد من أنك تستخدم سيرفر محلي (Live Server) وحاول مجدداً.";
-        } finally {
-            btn.disabled = false;
-        }
-    });
-</script>
-
+    </script>
 </body>
 </html>
