@@ -4,60 +4,81 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>معالج البطاقات الذكي</title>
-    <script src="https://unpkg.com/coi-serviceworker"></script>
+    
+    <script src="coi-serviceworker.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@latest/dist/bundle.js"></script>
+
     <style>
         body { font-family: sans-serif; background: #f0f2f5; text-align: center; padding: 20px; }
         .card { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         input { margin: 15px 0; display: block; width: 100%; }
         button { background: #28a745; color: white; border: none; padding: 12px; cursor: pointer; border-radius: 8px; width: 100%; font-size: 16px; }
-        #status { margin: 15px 0; color: #007bff; font-weight: bold; }
-        canvas { display: none; width: 100%; margin-top: 20px; border: 1px solid #ccc; }
+        #status { margin: 15px 0; color: #007bff; font-weight: bold; min-height: 20px; }
+        canvas { display: none; width: 100%; margin-top: 20px; border: 1px solid #ccc; background: white; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>معالج البطاقات</h2>
+        <h2>معالج البطاقات الذكي</h2>
+        <p>اختر الصورتين واضغط معالجة</p>
         <input type="file" id="front" accept="image/*">
         <input type="file" id="back" accept="image/*">
-        <button id="go">بدء المعالجة</button>
+        <button id="go">بدء المعالجة والدمج</button>
         <div id="status">جاهز</div>
         <canvas id="out"></canvas>
         <br>
-        <a id="dl" style="display:none"><button style="background:#007bff">تحميل النتيجة</button></a>
+        <a id="dl" style="display:none"><button style="background:#007bff">تحميل الصورة النهائية</button></a>
     </div>
 
     <script>
         const btn = document.getElementById('go');
+        
         btn.onclick = async () => {
             const f = document.getElementById('front').files[0];
             const b = document.getElementById('back').files[0];
-            if(!f || !b) return alert("اختر الصورتين");
+            
+            if(!f || !b) {
+                alert("يرجى اختيار وجه وظهر البطاقة");
+                return;
+            }
 
             btn.disabled = true;
-            document.getElementById('status').innerText = "جاري المعالجة... انتظر قليلاً";
+            document.getElementById('status').innerText = "جاري تحميل المحرك ومعالجة الصور...";
 
             try {
+                // استخدام الموديل الصغير لسرعة الأداء
                 const config = { model: 'small' };
-                const img1 = await createImageBitmap(await imglyRemoveBackground(f, config));
-                const img2 = await createImageBitmap(await imglyRemoveBackground(b, config));
+
+                // ملاحظة: تم تغيير الاسم هنا لضمان التعرف عليه
+                const frontBlob = await imgly.backgroundRemoval(f, config);
+                const img1 = await createImageBitmap(frontBlob);
+
+                const backBlob = await imgly.backgroundRemoval(b, config);
+                const img2 = await createImageBitmap(backBlob);
 
                 const canvas = document.getElementById('out');
                 const ctx = canvas.getContext('2d');
+
+                // إعدادات حجم اللوحة (الدمج)
                 canvas.width = Math.max(img1.width, img2.width);
                 canvas.height = img1.height + img2.height + 40;
                 canvas.style.display = "block";
 
-                ctx.drawImage(img1, (canvas.width-img1.width)/2, 0);
-                ctx.drawImage(img2, (canvas.width-img2.width)/2, img1.height + 40);
+                // رسم الصور
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img1, (canvas.width - img1.width) / 2, 0);
+                ctx.drawImage(img2, (canvas.width - img2.width) / 2, img1.height + 40);
 
-                document.getElementById('dl').href = canvas.toDataURL();
-                document.getElementById('dl').download = "card.png";
+                // رابط التحميل
+                document.getElementById('dl').href = canvas.toDataURL("image/png");
+                document.getElementById('dl').download = "ID_Merged.png";
                 document.getElementById('dl').style.display = "block";
-                document.getElementById('status').innerText = "تمت العملية!";
+                document.getElementById('status').innerText = "تمت المعالجة بنجاح!";
+
             } catch (e) {
                 console.error(e);
-                document.getElementById('status').innerText = "حدث خطأ: " + e.message;
+                document.getElementById('status').innerText = "خطأ: " + e.message;
             } finally {
                 btn.disabled = false;
             }
